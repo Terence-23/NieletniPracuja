@@ -11,7 +11,7 @@ create table companies(
     password varchar(255) not null,
     NIP Int not null,
     company_name varchar(255) not null,
-    full_name varchar(255) not null,
+    full_name varchar(255) not null
 );
 
 create table users(
@@ -19,8 +19,7 @@ create table users(
     login varchar(50) unique not null,
     password varchar(255) not null,
     email varchar(255) not null,
-    full_name varchar(255) not null,
-
+    full_name varchar(255) not null
 );
 
 create table jobs(
@@ -32,7 +31,7 @@ create table jobs(
     mode job_mode not null,
     hours job_hours not null,
     description text,
+    tags text,
     foreign key (owner)
         references companies(userid) 
-
-)
+);
