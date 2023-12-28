@@ -31,7 +31,7 @@ create table jobs(
     mode job_mode not null,
     hours job_hours not null,
     description text,
-    tags text,
+    tags BJSON,
     foreign key (owner)
         references companies(userid) 
 );
