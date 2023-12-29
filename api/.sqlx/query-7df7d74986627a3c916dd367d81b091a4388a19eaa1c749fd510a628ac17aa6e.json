@@ -1,0 +1,149 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO jobs (owner, creation_time, job_location, contract_type, mode, hours, description, tags)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        RETURNING jobid, owner, creation_time, job_location, contract_type \"contract_type: ContractType\", mode \"mode: JobMode\", hours \"hours: JobHours\", description, tags",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "jobid",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "owner",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "creation_time",
+        "type_info": "Time"
+      },
+      {
+        "ordinal": 3,
+        "name": "job_location",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "contract_type: ContractType",
+        "type_info": {
+          "Custom": {
+            "name": "contract",
+            "kind": {
+              "Enum": [
+                "praca",
+                "dzielo",
+                "zlecenie",
+                "tmp"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "mode: JobMode",
+        "type_info": {
+          "Custom": {
+            "name": "job_mode",
+            "kind": {
+              "Enum": [
+                "stationary",
+                "home",
+                "hybrid",
+                "mobile"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "hours: JobHours",
+        "type_info": {
+          "Custom": {
+            "name": "job_hours",
+            "kind": {
+              "Enum": [
+                "weekend",
+                "holiday",
+                "week",
+                "elastic"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "tags",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Time",
+        "Varchar",
+        {
+          "Custom": {
+            "name": "contract",
+            "kind": {
+              "Enum": [
+                "praca",
+                "dzielo",
+                "zlecenie",
+                "tmp"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "job_mode",
+            "kind": {
+              "Enum": [
+                "stationary",
+                "home",
+                "hybrid",
+                "mobile"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "job_hours",
+            "kind": {
+              "Enum": [
+                "weekend",
+                "holiday",
+                "week",
+                "elastic"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "7df7d74986627a3c916dd367d81b091a4388a19eaa1c749fd510a628ac17aa6e"
+}

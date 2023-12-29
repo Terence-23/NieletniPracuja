@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT jobid,\n        owner,\n        creation_time,\n        job_location,\n        contract_type \"contract_type: jobs::ContractType\",\n        mode \"mode: jobs::JobMode\",\n        hours \"hours: jobs::JobHours\",\n        description,\n        tags \n        FROM jobs",
+  "query": "SELECT jobid,\n        owner,\n        creation_time,\n        job_location,\n        contract_type \"contract_type: ContractType\",\n        mode \"mode: JobMode\",\n        hours \"hours: JobHours\",\n        description,\n        tags \n        FROM jobs",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       },
       {
         "ordinal": 4,
-        "name": "contract_type: jobs::ContractType",
+        "name": "contract_type: ContractType",
         "type_info": {
           "Custom": {
             "name": "contract",
@@ -42,7 +42,7 @@
       },
       {
         "ordinal": 5,
-        "name": "mode: jobs::JobMode",
+        "name": "mode: JobMode",
         "type_info": {
           "Custom": {
             "name": "job_mode",
@@ -59,7 +59,7 @@
       },
       {
         "ordinal": 6,
-        "name": "hours: jobs::JobHours",
+        "name": "hours: JobHours",
         "type_info": {
           "Custom": {
             "name": "job_hours",
@@ -82,7 +82,7 @@
       {
         "ordinal": 8,
         "name": "tags",
-        "type_info": "Json"
+        "type_info": "Jsonb"
       }
     ],
     "parameters": {
@@ -100,5 +100,5 @@
       true
     ]
   },
-  "hash": "aa05fd29d6ee650cc0490b4fed79bba48eeb163bd12e502b6e3d1545e5b99eaa"
+  "hash": "a4ff5e72be31351126c2542c109825ca03cd18a19c47a6e04e11c9cb9239d4b1"
 }

@@ -1,10 +1,21 @@
-use sqlx::{postgres::PgPoolOptions, Executor};
+use std::{collections::hash_map::DefaultHasher, hash::Hasher};
+
+use jobs::get_all_jobs;
+use sqlx::postgres::PgPoolOptions;
 use warp::Filter;
 
 mod jobs;
+mod test;
+pub mod users;
+mod auth;
 
 #[tokio::main]
 async fn main() {
+    let mut h = DefaultHasher::new();
+    h.write(b"admin123");
+    let hash = h.finish();
+    println!("{}", (hash & (1 << 32) - 1 ^ hash >> 32) as i32);
+    test::main().await;
     let pool = match PgPoolOptions::new()
         .max_connections(5)
         .connect("postgres://postgres:password@localhost/nieletnipracuja")
@@ -13,26 +24,8 @@ async fn main() {
         Ok(p) => p,
         Err(_) => panic!(),
     };
-    let rc = match sqlx::query_as!(
-        jobs::Job,
-        "SELECT jobid,
-        owner,
-        creation_time,
-        job_location,
-        contract_type \"contract_type: jobs::ContractType\",
-        mode \"mode: jobs::JobMode\",
-        hours \"hours: jobs::JobHours\",
-        description,
-        tags 
-        FROM jobs"
-    )
-    .fetch_all(&pool)
-    .await
-    {
-        Ok(v) => v.len(),
-        Err(_) => 0,
-    };
 
+    let rc = get_all_jobs(&pool).await.unwrap().len();
     // GET /hello/warp => 200 OK with body "Hello, warp!"
     let hello = warp::path!("hello" / String)
         .map(move |name| format!("Hello, {}!\nThere is {} open jobs\n", name, rc));
