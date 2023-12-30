@@ -144,7 +144,7 @@ impl CreateCompanyRequest {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 pub enum UserRole {
     Company,
     User,

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{types::JsonValue, Pool, Postgres};
 
-#[derive(Serialize, Deserialize, Debug, sqlx::Type)]
+#[derive(Serialize, Deserialize, Debug, sqlx::Type, Clone)]
 #[sqlx(type_name = "contract", rename_all = "lowercase")]
 pub enum ContractType {
     Praca,
@@ -9,7 +9,7 @@ pub enum ContractType {
     Zlecenie,
     Tmp,
 }
-#[derive(Serialize, Deserialize, Debug, sqlx::Type)]
+#[derive(Serialize, Deserialize, Debug, sqlx::Type, Clone)]
 #[sqlx(type_name = "job_hours", rename_all = "lowercase")]
 pub enum JobHours {
     Weekend,
@@ -18,13 +18,23 @@ pub enum JobHours {
     Elastic,
 }
 
-#[derive(Serialize, Deserialize, Debug, sqlx::Type)]
+#[derive(Serialize, Deserialize, Debug, sqlx::Type, Clone)]
 #[sqlx(type_name = "job_mode", rename_all = "lowercase")]
 pub enum JobMode {
     Stationary,
     Home,
     Hybrid,
     Mobile,
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+pub struct JobCreateRequest {
+    pub(crate) job_location: String,
+    pub(crate) contract_type: ContractType,
+    pub(crate) mode: JobMode,
+    pub(crate) hours: JobHours,
+    pub(crate) description: String,
+    pub(crate) tags: JsonValue,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,12 +81,12 @@ impl JobQuery {
     }
 }
 
-#[derive(Debug, sqlx::FromRow, Serialize, Deserialize)]
+#[derive(Debug, sqlx::FromRow, Serialize, Deserialize, Clone)]
 #[allow(unused)]
 pub struct Job {
     pub(crate) jobid: i32,
     pub(crate) owner: sqlx::types::Uuid,
-    pub(crate) creation_time: time::Time,
+    pub(crate) creation_time: time::OffsetDateTime,
     pub(crate) job_location: Option<String>,
     pub(crate) contract_type: ContractType,
     pub(crate) mode: JobMode,
@@ -103,7 +113,7 @@ pub async fn get_all_jobs(pool: &Pool<Postgres>) -> Result<Vec<Job>, sqlx::Error
     .await
 }
 
-pub async fn add_job(pool: &Pool<Postgres>, job: Job) -> Result<(), sqlx::Error> {
+pub async fn add_job(pool: &Pool<Postgres>, job: &Job) -> Result<(), sqlx::Error> {
     let added_jobs = sqlx::query_as!(
         Job,
         "INSERT INTO jobs (owner, creation_time, job_location, contract_type, mode, hours, description, tags)
