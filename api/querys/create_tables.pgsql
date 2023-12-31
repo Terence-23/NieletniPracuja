@@ -4,7 +4,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 create type contract as enum ('praca', 'dzielo', 'zlecenie', 'tmp');
 create type job_hours as enum ('weekend', 'holiday', 'week', 'elastic');
 create type job_mode as enum('stationary', 'home', 'hybrid', 'mobile');
+create type role as enum ('user', 'company');
 
+
+create table login(
+    login varchar(50) unique not null,
+    email varchar(255) primary key not null,
+    password INT not null,
+    userid UUID unique not null,
+    role role not null
+);
 
 create table companies(
     userid UUID primary key not null DEFAULT uuid_generate_v4 (),

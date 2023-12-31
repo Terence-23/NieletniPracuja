@@ -1,10 +1,12 @@
-use auth::Claim;
+use auth::{create_jwt, create_jwt_raw, Claim};
+use error::Error;
 use jobs::{add_job, get_all_jobs, Job, JobCreateRequest, JobQuery};
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-use time::{Duration, OffsetDateTime};
-use users::UserRole;
+use users::{CreateCompanyRequest, CreateUserRequest, LoginRequest, UserRole};
 use warp::{http::StatusCode, reject::Reject, Filter};
+
+mod error;
 
 #[allow(unused)]
 mod auth;
@@ -46,9 +48,16 @@ async fn query_jobs(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let jobs = match query.get_result(&pool).await {
         Ok(v) => v,
-        Err(e) => return Err(warp::reject::custom(ServerError::PostgresError(e))),
+        Err(e) => return Err(warp::reject::custom(Error::SQLX(e))),
     };
     Ok(warp::reply::json(&jobs))
+}
+
+fn json_filter<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
+where
+    T: Send + DeserializeOwned,
+{
+    warp::body::content_length_limit(1024 * 16).and(warp::body::json())
 }
 
 async fn job_post(
@@ -58,18 +67,10 @@ async fn job_post(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let uuid = match uuid::Uuid::parse_str(&owner_claim.uuid) {
         Ok(u) => u,
-        Err(_e) => {
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&"Invalid uuid".to_owned()),
-                StatusCode::BAD_REQUEST,
-            ))
-        }
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
     };
     if UserRole::Company != owner_claim.get_role() {
-        return Ok(warp::reply::with_status(
-            warp::reply::json(&"You are not allowed to create a job posting".to_owned()),
-            StatusCode::FORBIDDEN,
-        ));
+        return Err(warp::reject::custom(Error::Forbidden));
     }
 
     let job = Job {
@@ -85,21 +86,54 @@ async fn job_post(
     };
     Ok(match add_job(&pool, &job).await {
         Ok(_) => warp::reply::with_status(warp::reply::json(&job), StatusCode::OK),
-        Err(_) => {
-            warp::reply::with_status(warp::reply::json(&job), StatusCode::INTERNAL_SERVER_ERROR)
-        }
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
     })
 }
 
-// println!(
-//     "{}",
-//     auth::create_jwt(uuid::Uuid::max(), &users::UserRole::User).unwrap()
-// );
-// let mut h = DefaultHasher::new();
-// h.write(b"admin123");
-// let hash = h.finish();
-// println!("{}", (hash & (1 << 32) - 1 ^ hash >> 32) as i32);
-// test::main().await;
+async fn login(
+    req: LoginRequest,
+    pool: Pool<Postgres>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let claim = match req.login(&pool).await {
+        Ok(c) => c,
+        Err(e) => return Err(warp::reject::custom(e)),
+    };
+    let jwt = match create_jwt(claim) {
+        Ok(jwt) => jwt,
+        Err(e) => return Err(warp::reject::custom(e)),
+    };
+    return Ok(warp::reply::json(&jwt));
+}
+
+async fn register_user(
+    req: CreateUserRequest,
+    pool: Pool<Postgres>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let res = match req.execute(&pool).await {
+        Ok(u) => u,
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
+    };
+    let jwt = match create_jwt_raw(res.userid, &UserRole::User) {
+        Ok(jwt) => jwt,
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
+    };
+    Ok(warp::reply::json(&jwt))
+}
+
+async fn register_company(
+    req: CreateCompanyRequest,
+    pool: Pool<Postgres>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let res = match req.execute(&pool).await {
+        Ok(u) => u,
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
+    };
+    let jwt = match create_jwt_raw(res.userid, &UserRole::User) {
+        Ok(jwt) => jwt,
+        Err(e) => return Err(warp::reject::custom(Error::from(e))),
+    };
+    Ok(warp::reply::json(&jwt))
+}
 
 #[tokio::main]
 async fn main() {
@@ -112,27 +146,27 @@ async fn main() {
         Err(_) => panic!(),
     };
 
-    job_post(
-        JobCreateRequest {
-            job_location: "Somewhere".to_owned(),
-            contract_type: jobs::ContractType::Praca,
-            mode: jobs::JobMode::Mobile,
-            hours: jobs::JobHours::Week,
-            description: "Some random descryption".to_owned(),
-            tags: vec!["Job".to_owned(), "Mobile".to_owned()].into(),
-        },
-        Claim {
-            uuid: "12e1b078-4e42-47ed-a2c7-d6cd6269a2d0".to_owned(),
-            role: UserRole::Company.to_string(),
-            exp: OffsetDateTime::now_utc()
-                .checked_add(Duration::seconds(10))
-                .unwrap()
-                .unix_timestamp(),
-        },
-        pool.clone(),
-    )
-    .await
-    .unwrap();
+    // job_post(
+    //     JobCreateRequest {
+    //         job_location: "Somewhere".to_owned(),
+    //         contract_type: jobs::ContractType::Praca,
+    //         mode: jobs::JobMode::Mobile,
+    //         hours: jobs::JobHours::Week,
+    //         description: "Some random descryption".to_owned(),
+    //         tags: vec!["Job".to_owned(), "Mobile".to_owned()].into(),
+    //     },
+    //     Claim {
+    //         uuid: "12e1b078-4e42-47ed-a2c7-d6cd6269a2d0".to_owned(),
+    //         role: UserRole::Company.to_string(),
+    //         exp: OffsetDateTime::now_utc()
+    //             .checked_add(Duration::seconds(10))
+    //             .unwrap()
+    //             .unix_timestamp(),
+    //     },
+    //     pool.clone(),
+    // )
+    // .await
+    // .unwrap();
 
     let pool_filter = warp::any().map(move || pool.clone());
     // GET /hello/warp => 200 OK with body "Hello, warp!"

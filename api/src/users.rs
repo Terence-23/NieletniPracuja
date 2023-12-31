@@ -1,56 +1,18 @@
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use sqlx::{Pool, Postgres};
+use sqlx::{prelude::FromRow, Pool, Postgres};
 use std::{
     collections::hash_map::DefaultHasher,
+    f32::consts::E,
     fmt::{self, Formatter},
     hash::Hasher,
 };
+use time::Duration;
+use uuid::timestamp::context::NoContext;
+use uuid::{Timestamp, Uuid};
+use warp::reject::Reject;
 
-#[derive(Debug)]
-pub enum UserError {
-    NoSuchUser,
-    BadPassword,
-    WrongNIP,
-    SQLX(sqlx::Error),
-}
-
-impl From<sqlx::Error> for UserError {
-    fn from(value: sqlx::Error) -> Self {
-        UserError::SQLX(value)
-    }
-}
-impl fmt::Display for UserError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                UserError::NoSuchUser => "There is no user with this login/email".to_owned(),
-                UserError::BadPassword => "The password is incorrect".to_owned(),
-                UserError::SQLX(v) => format!("Sqlx error: {}", v),
-                UserError::WrongNIP => "The nip is incorrect".to_owned(),
-            }
-        )
-    }
-}
-impl std::error::Error for UserError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            UserError::NoSuchUser => None,
-            UserError::BadPassword => None,
-            UserError::SQLX(v) => Some(v),
-            UserError::WrongNIP => None,
-        }
-    }
-
-    fn description(&self) -> &str {
-        "description() is deprecated; use Display"
-    }
-
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        self.source()
-    }
-}
+use crate::auth::Claim;
+use crate::error::Error;
 
 fn get_string_hash(s: &str) -> i32 {
     let mut hasher = DefaultHasher::new();
@@ -67,25 +29,48 @@ pub struct CreateUserRequest {
     password: String,
 }
 impl CreateUserRequest {
-    pub async fn execute(&self, pool: &Pool<Postgres>) -> Result<(), sqlx::Error> {
+    pub async fn execute(&self, pool: &Pool<Postgres>) -> Result<User, sqlx::Error> {
+        let uuid = uuid::Uuid::new_v7(Timestamp::now(NoContext::default()));
+
         sqlx::query!(
-            r#"INSERT INTO users (email, full_name, login, password)
-            VALUES ($1, $2, $3, $4)
-            "#,
-            self.email,
-            self.full_name,
+            r#" INSERT INTO login (login, email, password, userid, role)
+            VALUES ($1, $2, $3, $4, $5)"#,
             self.login,
-            self.get_password_hash()
+            self.email,
+            self.get_password_hash(),
+            uuid,
+            UserRole::User as _
         )
         .execute(pool)
         .await?;
 
-        Ok(())
+        sqlx::query!(
+            r#"INSERT INTO users (email, full_name, login, password, userid)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+            self.email,
+            self.full_name,
+            self.login,
+            self.get_password_hash(),
+            uuid
+        )
+        .execute(pool)
+        .await?;
+
+        Ok(User {
+            userid: uuid,
+            login: self.login.to_owned(),
+            password: self.get_password_hash(),
+            email: self.email.to_owned(),
+            full_name: self.full_name.to_owned(),
+        })
     }
     pub fn get_password_hash(&self) -> i32 {
         get_string_hash(&self.password)
     }
 }
+
+#[derive(Debug, Deserialize)]
 pub struct CreateCompanyRequest {
     email: String,
     full_name: String,
@@ -95,25 +80,47 @@ pub struct CreateCompanyRequest {
     company_name: String,
 }
 impl CreateCompanyRequest {
-    pub async fn execute(&self, pool: &Pool<Postgres>) -> Result<(), UserError> {
+    pub async fn execute(&self, pool: &Pool<Postgres>) -> Result<Company, Error> {
         if !self.validate_nip() {
-            return Err(UserError::WrongNIP);
+            return Err(Error::ImproperNIP);
         }
+        let uuid = uuid::Uuid::new_v7(Timestamp::now(NoContext::default()));
+
         sqlx::query!(
-            r#"INSERT INTO companies (email, full_name, login, password, nip, company_name)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            r#" INSERT INTO login (login, email, password, userid, role)
+            VALUES ($1, $2, $3, $4, $5)"#,
+            self.login,
+            self.email,
+            self.get_password_hash(),
+            uuid,
+            UserRole::Company as _
+        )
+        .execute(pool)
+        .await?;
+        sqlx::query!(
+            r#"INSERT INTO companies (email, full_name, login, password, nip, company_name, userid)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
             self.email,
             self.full_name,
             self.login,
             self.get_password_hash(),
             self.nip,
-            self.company_name
+            self.company_name,
+            uuid
         )
         .execute(pool)
         .await?;
 
-        Ok(())
+        Ok(Company {
+            userid: uuid,
+            login: self.login.to_owned(),
+            email: self.email.to_owned(),
+            password: self.get_password_hash(),
+            nip: self.nip,
+            company_name: self.company_name.to_owned(),
+            full_name: self.full_name.to_owned(),
+        })
     }
     pub fn get_password_hash(&self) -> i32 {
         get_string_hash(&self.password)
@@ -144,7 +151,8 @@ impl CreateCompanyRequest {
     }
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "role", rename_all = "lowercase")]
 pub enum UserRole {
     Company,
     User,
@@ -157,6 +165,15 @@ impl std::fmt::Display for UserRole {
             Self::User => write!(f, "User"),
         }
     }
+}
+
+#[derive(Debug, FromRow, Serialize, Deserialize)]
+struct LoginData {
+    login: String,
+    email: String,
+    password: i32,
+    userid: Uuid,
+    role: UserRole,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,89 +189,55 @@ impl LoginRequest {
     pub fn get_login(&self) -> String {
         self.login.to_owned()
     }
+    pub async fn login(&self, pool: &Pool<Postgres>) -> Result<Claim, Error> {
+        let data = sqlx::query_as!(
+            LoginData,
+            r#"SELECT
+            login,
+            email, 
+            password,
+            userid,
+            role "role: UserRole"
+            FROM login WHERE
+            email = $1 OR
+            login = $1
+            "#,
+            self.login
+        )
+        .fetch_one(pool)
+        .await?;
+        if self.get_password_hash() != data.password {
+            return Err(Error::BadPassword);
+        }
+        let uuid = data.userid;
+        let role = data.role;
+
+        Ok(Claim {
+            uuid: uuid.as_simple().to_string(),
+            role: role.to_string(),
+            exp: (time::OffsetDateTime::now_utc() + Duration::days(7)).unix_timestamp(),
+        })
+    }
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 #[allow(unused)]
 pub struct User {
-    userid: sqlx::types::Uuid,
+    pub userid: sqlx::types::Uuid,
     login: String,
     password: i32,
     email: String,
     full_name: String,
 }
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 #[allow(unused)]
 pub struct Company {
-    userid: sqlx::types::Uuid,
+    pub userid: sqlx::types::Uuid,
     login: String,
     email: String,
     password: i32,
     nip: i64,
     company_name: String,
     full_name: String,
-}
-
-impl Serialize for User {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("User", 5)?;
-        state.serialize_field("user_id", &self.userid.to_string())?;
-        state.serialize_field("login", &self.login)?;
-        state.serialize_field("password", &self.password)?;
-        state.serialize_field("email", &self.email)?;
-        state.serialize_field("full_name", &self.full_name)?;
-
-        state.end()
-    }
-}
-
-impl User {
-    pub async fn login(
-        login: String,
-        password_hash: i32,
-        pool: &Pool<Postgres>,
-    ) -> Result<User, UserError> {
-        let user = sqlx::query_as::<_, User>(
-            r#"SELECT * FROM users 
-            WHERE login = '$1' OR email = '$1' "#,
-        )
-        .bind(login)
-        .fetch_all(pool)
-        .await?;
-        if user.len() < 1 {
-            return Err(UserError::NoSuchUser);
-        }
-        if password_hash != user[0].password {
-            return Err(UserError::BadPassword);
-        }
-        Ok(user[0].to_owned())
-    }
-}
-
-impl Company {
-    pub async fn login(
-        login: String,
-        password_hash: i32,
-        pool: &Pool<Postgres>,
-    ) -> Result<User, UserError> {
-        let user = sqlx::query_as::<_, User>(
-            r#"SELECT * FROM companies 
-            WHERE login = '$1' OR email = '$1' "#,
-        )
-        .bind(login)
-        .fetch_all(pool)
-        .await?;
-        if user.len() < 1 {
-            return Err(UserError::NoSuchUser);
-        }
-
-        if password_hash != user[0].password {
-            return Err(UserError::BadPassword);
-        }
-        Ok(user[0].to_owned())
-    }
 }

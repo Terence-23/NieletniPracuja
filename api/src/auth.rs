@@ -2,11 +2,30 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use uuid::Uuid;
+use warp::http::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use warp::reject::Reject;
 
-use crate::users::{UserError, UserRole};
+use crate::error::{self, Error};
+use crate::users::UserRole;
 
 const JWT_SECRET: &'static [u8] = b"Very secret secret";
 const ALG: Algorithm = Algorithm::HS512;
+const BEARER: &str = "Bearer";
+
+fn jwt_from_header(headers: &HeaderMap<HeaderValue>) -> error::Result<String> {
+    let header = match headers.get(AUTHORIZATION) {
+        Some(v) => v,
+        None => return Err(Error::NoAuthHeaderError),
+    };
+    let auth_header = match std::str::from_utf8(header.as_bytes()) {
+        Ok(v) => v,
+        Err(_) => return Err(Error::NoAuthHeaderError),
+    };
+    if !auth_header.starts_with(BEARER) {
+        return Err(Error::InvalidAuthHeaderError);
+    }
+    Ok(auth_header.trim_start_matches(BEARER).to_owned())
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Claim {
@@ -25,10 +44,18 @@ impl Claim {
         }
     }
 }
+pub fn create_jwt(claim: Claim) -> Result<String, Error> {
+    let header = Header::new(ALG);
+    Ok(encode(
+        &header,
+        &claim,
+        &EncodingKey::from_secret(JWT_SECRET),
+    )?)
+}
 
-pub fn create_jwt(uid: uuid::Uuid, role: &UserRole) -> Result<String, impl std::error::Error> {
+pub fn create_jwt_raw(uid: uuid::Uuid, role: &UserRole) -> Result<String, Error> {
     let expiration = time::OffsetDateTime::now_utc()
-        .checked_add(Duration::seconds(60))
+        .checked_add(Duration::days(7))
         .expect("Invalid timestamp")
         .unix_timestamp();
 
@@ -39,7 +66,11 @@ pub fn create_jwt(uid: uuid::Uuid, role: &UserRole) -> Result<String, impl std::
     };
 
     let header = Header::new(ALG);
-    encode(&header, &claims, &EncodingKey::from_secret(JWT_SECRET))
+    Ok(encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(JWT_SECRET),
+    )?)
 }
 
 pub fn decode_jwt(jwt: String) -> Option<Claim> {
