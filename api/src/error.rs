@@ -13,6 +13,7 @@ pub enum Error {
     Forbidden,
     NoAuthHeaderError,
     InvalidAuthHeaderError,
+    Expired,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -50,6 +51,7 @@ impl fmt::Display for Error {
                 Error::Forbidden => "Forbidden".to_owned(),
                 Error::NoAuthHeaderError => "No auth header".to_owned(),
                 Error::InvalidAuthHeaderError => "Invalid auth header".to_owned(),
+                Error::Expired => "JWT expired".to_owned(),
             }
         )
     }
@@ -66,6 +68,7 @@ impl std::error::Error for Error {
             Error::Forbidden => None,
             Error::NoAuthHeaderError => None,
             Error::InvalidAuthHeaderError => None,
+            Error::Expired => None,
         }
     }
 

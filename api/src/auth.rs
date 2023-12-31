@@ -5,7 +5,7 @@ use uuid::Uuid;
 use warp::http::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use warp::reject::Reject;
 
-use crate::error::{self, Error};
+use crate::error::{self, Error, WebResult};
 use crate::users::UserRole;
 
 const JWT_SECRET: &'static [u8] = b"Very secret secret";
@@ -25,6 +25,37 @@ fn jwt_from_header(headers: &HeaderMap<HeaderValue>) -> error::Result<String> {
         return Err(Error::InvalidAuthHeaderError);
     }
     Ok(auth_header.trim_start_matches(BEARER).to_owned())
+}
+pub fn decode_header(headers: HeaderMap<HeaderValue>) -> error::Result<Claim> {
+    let header = match headers.get(AUTHORIZATION) {
+        Some(v) => v,
+        None => return Err(Error::NoAuthHeaderError),
+    };
+    let auth_header = match std::str::from_utf8(header.as_bytes()) {
+        Ok(v) => v,
+        Err(_) => return Err(Error::NoAuthHeaderError),
+    };
+    if !auth_header.starts_with(BEARER) {
+        return Err(Error::InvalidAuthHeaderError);
+    }
+    let jwt = auth_header.trim_start_matches(BEARER).to_owned();
+    match decode::<Claim>(
+        &jwt,
+        &DecodingKey::from_secret(JWT_SECRET),
+        &Validation::new(ALG),
+    ) {
+        Ok(v) => {
+            if time::OffsetDateTime::now_utc().unix_timestamp() > v.claims.exp {
+                Err(Error::Expired)
+            } else {
+                Ok(v.claims)
+            }
+        }
+        Err(e) => Err(Error::JWT(e)),
+    }
+}
+pub async fn async_decode(headers: HeaderMap<HeaderValue>) -> WebResult<Claim> {
+    decode_header(headers).map_err(|err| warp::reject::custom(err))
 }
 
 #[derive(Debug, Deserialize, Serialize)]

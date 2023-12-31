@@ -1,10 +1,11 @@
-use auth::{create_jwt, create_jwt_raw, Claim};
+use auth::{async_decode, create_jwt, create_jwt_raw, decode_header, Claim};
 use error::Error;
 use jobs::{add_job, get_all_jobs, Job, JobCreateRequest, JobQuery};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use users::{CreateCompanyRequest, CreateUserRequest, LoginRequest, UserRole};
-use warp::{http::StatusCode, reject::Reject, Filter};
+use warp::http::{HeaderMap, HeaderValue, StatusCode};
+use warp::{filters::header::headers_cloned, reject::Reject, Filter};
 
 mod error;
 
@@ -58,6 +59,12 @@ where
     T: Send + DeserializeOwned,
 {
     warp::body::content_length_limit(1024 * 16).and(warp::body::json())
+}
+
+fn claim_filter() -> impl Filter<Extract = (Claim,), Error = warp::Rejection> + Clone {
+    headers_cloned()
+        .map(move |headers: HeaderMap<HeaderValue>| headers)
+        .and_then(async_decode)
 }
 
 async fn job_post(
@@ -173,15 +180,61 @@ async fn main() {
     let hello = warp::path!("hello" / String)
         .and(pool_filter.clone())
         .and_then(hello);
-    let jobs = warp::post()
-        .and(warp::path("api"))
-        .and(warp::path("get_jobs"))
-        .and(warp::path::end())
-        .and(job_query())
-        .and(pool_filter.clone())
-        .and_then(query_jobs);
+    let jobs = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("get_jobs"))
+            .and(warp::path::end())
+            .and(job_query())
+            .and(pool_filter.clone())
+            .and_then(query_jobs)
+    };
+    let login = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("login"))
+            .and(warp::path::end())
+            .and(json_filter::<LoginRequest>())
+            .and(pool_filter.clone())
+            .and_then(login)
+    };
+    let user_register = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("register"))
+            .and(warp::path("user"))
+            .and(warp::path::end())
+            .and(json_filter::<CreateUserRequest>())
+            .and(pool_filter.clone())
+            .and_then(register_user)
+    };
+    let company_register = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("register"))
+            .and(warp::path("company"))
+            .and(warp::path::end())
+            .and(json_filter::<CreateCompanyRequest>())
+            .and(pool_filter.clone())
+            .and_then(register_company)
+    };
+    let post_job = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("post_job"))
+            .and(warp::path::end())
+            .and(json_filter::<JobCreateRequest>())
+            .and(claim_filter())
+            .and(pool_filter.clone())
+            .and_then(job_post)
+    };
 
-    let routes = hello.or(jobs);
+    let routes = hello
+        .or(jobs) // /api/get_jobs
+        .or(login) // /api/login
+        .or(user_register) // /api/register/user
+        .or(company_register) // /api/register/company
+        .or(post_job); // /api/post_job
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }
