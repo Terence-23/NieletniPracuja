@@ -10,7 +10,7 @@ use crate::users::UserRole;
 
 const JWT_SECRET: &'static [u8] = b"Very secret secret";
 const ALG: Algorithm = Algorithm::HS512;
-const BEARER: &str = "Bearer";
+const BEARER: &str = "Bearer ";
 
 fn jwt_from_header(headers: &HeaderMap<HeaderValue>) -> error::Result<String> {
     let header = match headers.get(AUTHORIZATION) {
@@ -39,6 +39,7 @@ pub fn decode_header(headers: HeaderMap<HeaderValue>) -> error::Result<Claim> {
         return Err(Error::InvalidAuthHeaderError);
     }
     let jwt = auth_header.trim_start_matches(BEARER).to_owned();
+    println!("JWT:{}", jwt);
     match decode::<Claim>(
         &jwt,
         &DecodingKey::from_secret(JWT_SECRET),

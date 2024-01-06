@@ -131,6 +131,7 @@ impl CreateCompanyRequest {
         if nip.len() < 10 || nip.len() > 10 {
             return false;
         }
+        println!("Good len");
         let mul = {
             (nip[0] - b'0') as u16 * 6
                 + (nip[1] - b'0') as u16 * 5
@@ -144,9 +145,11 @@ impl CreateCompanyRequest {
         };
 
         let m = mul % 11;
-        if m == 10 || m != *nip.last().unwrap() as u16 {
+        println!("mod: {}, mul: {}", m, mul);
+        if m == 10 || m != (*nip.last().unwrap() - b'0') as u16 {
             return false;
         }
+        println!("Good");
         true
     }
 }

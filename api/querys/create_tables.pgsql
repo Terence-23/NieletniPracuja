@@ -20,7 +20,7 @@ create table companies(
     login varchar(50) unique not null,
     email varchar(255) UNIQUE not null,
     password INT not null, -- hash
-    NIP Int not null,
+    NIP BIGINT not null,
     company_name varchar(255) not null,
     full_name varchar(255) not null
 );
@@ -36,13 +36,13 @@ create table users(
 create table jobs(
     jobid serial primary key,
     owner uuid not null,
-    creation_time time not null,
-    job_location varchar(255),
+    creation_time timestamptz not null,
+    job_location varchar(255) not null,
     contract_type contract not null,
     mode job_mode not null,
     hours job_hours not null,
     description text,
-    tags BJSON,
+    tags JSONB,
     foreign key (owner)
         references companies(userid) 
 );

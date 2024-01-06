@@ -1,16 +1,18 @@
-use auth::{async_decode, create_jwt, create_jwt_raw, decode_header, Claim};
+use auth::{async_decode, create_jwt, create_jwt_raw, Claim};
 use error::Error;
 use jobs::{add_job, get_all_jobs, Job, JobCreateRequest, JobQuery};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use users::{CreateCompanyRequest, CreateUserRequest, LoginRequest, UserRole};
-use warp::http::{HeaderMap, HeaderValue, StatusCode};
-use warp::{filters::header::headers_cloned, reject::Reject, Filter};
-
-mod error;
+use warp::{
+    filters::header::headers_cloned,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    Filter,
+};
 
 #[allow(unused)]
 mod auth;
+mod error;
 #[allow(unused)]
 mod jobs;
 #[allow(unused)]
@@ -18,31 +20,22 @@ mod test;
 #[allow(unused)]
 pub mod users;
 
-#[derive(Serialize)]
-struct HelloReply {
-    name: String,
-    jobs: Vec<Job>,
-}
-
-#[derive(Debug)]
-enum ServerError {
-    PostgresError(sqlx::Error),
-}
-impl Reject for ServerError {}
-
 async fn hello(name: String, pool: Pool<Postgres>) -> Result<impl warp::Reply, warp::Rejection> {
+    #[derive(Serialize)]
+    struct HelloReply {
+        name: String,
+        jobs: Vec<Job>,
+    }
+
     Ok(warp::reply::json(&HelloReply {
         name,
         jobs: match get_all_jobs(&pool).await {
             Ok(v) => v,
-            Err(e) => return Err(warp::reject::custom(ServerError::PostgresError(e))),
+            Err(e) => return Err(warp::reject::custom(Error::SQLX(e))),
         },
     }))
 }
 
-fn job_query() -> impl Filter<Extract = (JobQuery,), Error = warp::Rejection> + Clone {
-    warp::body::content_length_limit(1024 * 16).and(warp::body::json())
-}
 async fn query_jobs(
     query: JobQuery,
     pool: Pool<Postgres>,
@@ -53,7 +46,10 @@ async fn query_jobs(
     };
     Ok(warp::reply::json(&jobs))
 }
-
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Token {
+    pub token: String,
+}
 fn json_filter<T>() -> impl Filter<Extract = (T,), Error = warp::Rejection> + Clone
 where
     T: Send + DeserializeOwned,
@@ -109,7 +105,7 @@ async fn login(
         Ok(jwt) => jwt,
         Err(e) => return Err(warp::reject::custom(e)),
     };
-    return Ok(warp::reply::json(&jwt));
+    return Ok(warp::reply::json(&Token { token: jwt }));
 }
 
 async fn register_user(
@@ -124,7 +120,7 @@ async fn register_user(
         Ok(jwt) => jwt,
         Err(e) => return Err(warp::reject::custom(Error::from(e))),
     };
-    Ok(warp::reply::json(&jwt))
+    Ok(warp::reply::json(&Token { token: jwt }))
 }
 
 async fn register_company(
@@ -135,11 +131,11 @@ async fn register_company(
         Ok(u) => u,
         Err(e) => return Err(warp::reject::custom(Error::from(e))),
     };
-    let jwt = match create_jwt_raw(res.userid, &UserRole::User) {
+    let jwt = match create_jwt_raw(res.userid, &UserRole::Company) {
         Ok(jwt) => jwt,
         Err(e) => return Err(warp::reject::custom(Error::from(e))),
     };
-    Ok(warp::reply::json(&jwt))
+    Ok(warp::reply::json(&Token { token: jwt }))
 }
 
 #[tokio::main]
@@ -185,7 +181,7 @@ async fn main() {
             .and(warp::path("api"))
             .and(warp::path("get_jobs"))
             .and(warp::path::end())
-            .and(job_query())
+            .and(json_filter::<JobQuery>())
             .and(pool_filter.clone())
             .and_then(query_jobs)
     };
