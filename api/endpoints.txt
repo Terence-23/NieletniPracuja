@@ -1,0 +1,73 @@
+/api/get_jobs
+    data:{
+        job_location: String | null,
+        contract_type: "Praca" | "Dzielo" | "Zlecenie" | "Tmp" | null,
+        mode: "Stationary" | "Home" | "Hybrid" | "Mobile" | null,
+        hours: "Weekend" | "Holiday" | "Week" | "Elastic" | null,
+        tags: [String],
+        text: String,
+    }
+    returns:[
+        {
+            jobid: Int,
+            owner: Uuid,
+            creation_time: Time,
+            job_location: String | null,
+            contract_type: "Praca" | "Dzielo" | "Zlecenie" | "Tmp",
+            mode: "Stationary" | "Home" | "Hybrid" | "Mobile",
+            hours: "Weekend" | "Holiday" | "Week" | "Elastic",
+            description: String | null,
+            tags: [String] | null,
+        }
+    ]
+/api/login
+    data:{
+        login: String,
+        password: String
+    }
+    returns:{
+        token: String - A JWT authetication token 
+    }
+/api/register/user
+    data: {
+        email: String,
+        full_name: String,
+        login: String,
+        password: String
+    }
+    returns:{
+    token: String - A JWT authetication token 
+    }
+/api/register/company
+    data: {
+        email: String,
+        full_name: String,
+        login: String,
+        password: String,
+        nip: Int - must be a valid NIP number,
+        company_name: String
+    }
+    returns:{
+    token: String - A JWT authetication token 
+    }
+/api/post_job
+    Header:  "Authorization: Bearer {JWT}" - JWT is a valid authentication token
+    data:{
+        job_location: String,
+        contract_type: "Praca" | "Dzielo" | "Zlecenie" | "Tmp",
+        mode: "Stationary" | "Home" | "Hybrid" | "Mobile",
+        hours: "Weekend" | "Holiday" | "Week" | "Elastic",
+        description: String,
+        tags: [String],
+    }
+    returns:{
+        jobid: Int,
+        owner: Uuid,
+        creation_time: Time,
+        job_location: String | null,
+        contract_type: "Praca" | "Dzielo" | "Zlecenie" | "Tmp",
+        mode: "Stationary" | "Home" | "Hybrid" | "Mobile",
+        hours: "Weekend" | "Holiday" | "Week" | "Elastic",
+        description: String | null,
+        tags: [String] | null,
+    }
