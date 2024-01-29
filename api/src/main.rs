@@ -2,13 +2,15 @@ use auth::{async_decode, create_jwt, create_jwt_raw, Claim};
 use error::Error;
 use jobs::{add_job, get_all_jobs, Job, JobCreateRequest, JobQuery};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-use users::{CreateCompanyRequest, CreateUserRequest, LoginRequest, UserRole};
+use sqlx::{postgres::PgPoolOptions, query_as, Pool, Postgres};
+use users::{Company, CreateCompanyRequest, CreateUserRequest, LoginRequest, UserRole};
 use warp::{
     filters::header::headers_cloned,
     http::{HeaderMap, HeaderValue, StatusCode},
     Filter,
 };
+
+use crate::users::User;
 
 #[allow(unused)]
 mod auth;
@@ -138,6 +140,52 @@ async fn register_company(
     Ok(warp::reply::json(&Token { token: jwt }))
 }
 
+async fn private_user_data(
+    claim: Claim,
+    pool: Pool<Postgres>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    match claim.get_role() {
+        UserRole::Company => {
+            let user = query_as!(
+                Company,
+                r#"SELECT
+                    userid,
+                    login,
+                    email,
+                    password,
+                    nip,
+                    company_name,
+                    full_name 
+                FROM companies
+                WHERE userid = $1"#,
+                claim.get_uuid().unwrap()
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            Ok(warp::reply::json(&user))
+        }
+        UserRole::User => {
+            let user = query_as!(
+                User,
+                r#"SELECT
+                    userid,
+                    login,
+                    email,
+                    password,
+                    full_name 
+                FROM users
+                WHERE userid = $1"#,
+                claim.get_uuid().unwrap()
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            Ok(warp::reply::json(&user))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let pool = match PgPoolOptions::new()
@@ -224,13 +272,23 @@ async fn main() {
             .and(pool_filter.clone())
             .and_then(job_post)
     };
+    let user_data = {
+        warp::post()
+            .and(warp::path("api"))
+            .and(warp::path("get"))
+            .and(warp::path::end())
+            .and(claim_filter())
+            .and(pool_filter.clone())
+            .and_then(private_user_data)
+    };
 
     let routes = hello
         .or(jobs) // /api/get_jobs
         .or(login) // /api/login
         .or(user_register) // /api/register/user
         .or(company_register) // /api/register/company
-        .or(post_job); // /api/post_job
+        .or(post_job) // /api/post_job
+        .or(user_data); // /api/get
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }

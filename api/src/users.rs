@@ -14,13 +14,12 @@ use warp::reject::Reject;
 use crate::auth::Claim;
 use crate::error::Error;
 
-fn get_string_hash(s: &str) -> i32 {
+fn get_string_hash(s: &str) -> i64 {
     let mut hasher = DefaultHasher::new();
     hasher.write(s.as_bytes());
     let hash = hasher.finish();
-    (hash & (1 << 32) - 1 ^ hash >> 32) as i32
+    hash as i64
 }
-
 #[derive(Debug, Deserialize)]
 pub struct CreateUserRequest {
     email: String,
@@ -65,7 +64,7 @@ impl CreateUserRequest {
             full_name: self.full_name.to_owned(),
         })
     }
-    pub fn get_password_hash(&self) -> i32 {
+    pub fn get_password_hash(&self) -> i64 {
         get_string_hash(&self.password)
     }
 }
@@ -122,7 +121,7 @@ impl CreateCompanyRequest {
             full_name: self.full_name.to_owned(),
         })
     }
-    pub fn get_password_hash(&self) -> i32 {
+    pub fn get_password_hash(&self) -> i64 {
         get_string_hash(&self.password)
     }
     fn validate_nip(&self) -> bool {
@@ -174,7 +173,7 @@ impl std::fmt::Display for UserRole {
 struct LoginData {
     login: String,
     email: String,
-    password: i32,
+    password: i64,
     userid: Uuid,
     role: UserRole,
 }
@@ -186,7 +185,7 @@ pub struct LoginRequest {
     password: String,
 }
 impl LoginRequest {
-    pub fn get_password_hash(&self) -> i32 {
+    pub fn get_password_hash(&self) -> i64 {
         get_string_hash(&self.password)
     }
     pub fn get_login(&self) -> String {
@@ -227,20 +226,20 @@ impl LoginRequest {
 #[allow(unused)]
 pub struct User {
     pub userid: sqlx::types::Uuid,
-    login: String,
-    password: i32,
-    email: String,
-    full_name: String,
+    pub login: String,
+    pub password: i64,
+    pub email: String,
+    pub full_name: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize)]
 #[allow(unused)]
 pub struct Company {
     pub userid: sqlx::types::Uuid,
-    login: String,
-    email: String,
-    password: i32,
-    nip: i64,
-    company_name: String,
-    full_name: String,
+    pub login: String,
+    pub email: String,
+    pub password: i64,
+    pub nip: i64,
+    pub company_name: String,
+    pub full_name: String,
 }
