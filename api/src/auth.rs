@@ -8,7 +8,12 @@ use warp::reject::Reject;
 use crate::error::{self, Error, WebResult};
 use crate::users::UserRole;
 
-const JWT_SECRET: &'static [u8] = b"Very secret secret";
+use dotenv;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref JWT_SECRET: Vec<u8> = dotenv::var("JWT_SECRET").unwrap().as_bytes().to_owned();
+}
 const ALG: Algorithm = Algorithm::HS512;
 const BEARER: &str = "Bearer ";
 
@@ -42,7 +47,7 @@ pub fn decode_header(headers: HeaderMap<HeaderValue>) -> error::Result<Claim> {
     println!("JWT:{}", jwt);
     match decode::<Claim>(
         &jwt,
-        &DecodingKey::from_secret(JWT_SECRET),
+        &DecodingKey::from_secret(&JWT_SECRET),
         &Validation::new(ALG),
     ) {
         Ok(v) => {
@@ -81,7 +86,7 @@ pub fn create_jwt(claim: Claim) -> Result<String, Error> {
     Ok(encode(
         &header,
         &claim,
-        &EncodingKey::from_secret(JWT_SECRET),
+        &EncodingKey::from_secret(&JWT_SECRET),
     )?)
 }
 
@@ -101,14 +106,14 @@ pub fn create_jwt_raw(uid: uuid::Uuid, role: &UserRole) -> Result<String, Error>
     Ok(encode(
         &header,
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET),
+        &EncodingKey::from_secret(&JWT_SECRET),
     )?)
 }
 
 pub fn decode_jwt(jwt: String) -> Option<Claim> {
     match decode::<Claim>(
         &jwt,
-        &DecodingKey::from_secret(JWT_SECRET),
+        &DecodingKey::from_secret(&JWT_SECRET),
         &Validation::new(ALG),
     ) {
         Ok(v) => {
